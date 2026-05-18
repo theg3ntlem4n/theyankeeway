@@ -1,70 +1,47 @@
 import pandas as pd
-
-    df = pd.read_csv(url)
-    df["stat_type"] = name
-    df["pull_date"] = pull_date
-
-    all_frames.append(df)
-
-# Combine all stat views into one table (long format)
-final_df = pd.concat(all_frames, ignore_index=True)
-
-# Basic cleanup
-final_df = final_df.loc[:, ~final_df.columns.duplicated()]
-final_df.columns = [c.lower().replace('%', 'pct') for c in final_df.columns]
-
-# Save locally
-os.makedirs("data/raw", exist_ok=True)
-final_df.to_csv("data/raw/mlb_batting_all_stats.csv", index=False)
-
-# Upload to database
-final_df.to_sql(
-    "mlb_batting_daily_all",
-    engine,
-    if_exists="append",
-    index=False
-)
-
-print("Expanded batting dataset uploaded successfully")
-```python
-import pandas as pd
 from sqlalchemy import create_engine
 from dotenv import load_dotenv
 import os
 from datetime import datetime
 
 load_dotenv()
+engine = create_engine(os.getenv("DATABASE_URL"))
 
-DATABASE_URL = os.getenv("DATABASE_URL")
-engine = create_engine(DATABASE_URL)
+BASE_URL = "https://www.fangraphs.com/statsd.aspx"
 
-# Fangraphs export endpoint
-url = (
-    "https://www.fangraphs.com/leaders.aspx?"
-    "pos=all&stats=bat&lg=all&qual=0&type=8&season=2026&month=0"
-    "&season1=2026&ind=0&team=0&pageitems=2000&csv=1"
-)
+# Example: batting game logs endpoint pattern
+# FanGraphs uses season + split=game log style
 
-print("Downloading batting data...")
+seasons = range(2000, 2027)
 
-df = pd.read_csv(url)
+all_games = []
 
-df["pull_date"] = datetime.utcnow()
+for season in seasons:
+    print(f"Pulling game logs {season}")
 
-print(df.head())
+    url = (
+        f"{BASE_URL}?playerid=&position=all&season={season}"
+        "&stat=bat&split=game&team=0&league=0&csv=1"
+    )
 
-# Save locally
-os.makedirs("data/raw", exist_ok=True)
+    try:
+        df = pd.read_csv(url)
+        df["season"] = season
+        all_games.append(df)
+    except Exception as e:
+        print(f"Failed season {season}: {e}")
 
-df.to_csv("data/raw/mlb_batting.csv", index=False)
+final_df = pd.concat(all_games, ignore_index=True)
 
-# Upload to database
+final_df.columns = [c.lower().replace("%", "pct") for c in final_df.columns]
 
-df.to_sql(
-    "mlb_batting_daily",
+final_df["pull_date"] = datetime.utcnow()
+
+final_df.to_sql(
+    "player_game_logs",
     engine,
     if_exists="append",
     index=False
 )
 
-print("Batting data uploaded successfully")
+print("Game logs loaded (2000-present)")
