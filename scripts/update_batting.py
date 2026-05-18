@@ -21,22 +21,59 @@ url = (
 
 df = pd.read_csv(url)
 
-df.columns = [c.lower().replace("%", "pct") for c in df.columns]
+# =========================
+# CLEAN COLUMN NAMES
+# =========================
+df.columns = (
+    df.columns
+    .str.lower()
+    .str.replace("%", "pct")
+    .str.replace(" ", "_")
+)
 
-df["season"] = CURRENT_SEASON
-df["pull_date"] = datetime.utcnow()
+# =========================
+# FIX FAN GRAPHS INCONSISTENCIES
+# =========================
+rename_map = {}
 
-# -----------------------------
-# CLEAN REQUIRED KEYS
-# -----------------------------
-# ensure these exist in dataset
+if "date" in df.columns:
+    rename_map["date"] = "game_date"
+
+if "gamedate" in df.columns:
+    rename_map["gamedate"] = "game_date"
+
+if "player_id" in df.columns:
+    rename_map["player_id"] = "playerid"
+
+df = df.rename(columns=rename_map)
+
+# =========================
+# VALIDATION (prevents crash)
+# =========================
+required_cols = ["playerid", "game_date"]
+
+missing = [c for c in required_cols if c not in df.columns]
+if missing:
+    raise ValueError(
+        f"Missing columns {missing}. Available: {df.columns.tolist()}"
+    )
+
+# =========================
+# SAFE ADDITIONS (NO FRAGMENTATION)
+# =========================
+df = df.assign(
+    season=CURRENT_SEASON,
+    pull_date=datetime.utcnow()
+)
+
 df = df.dropna(subset=["playerid", "game_date"])
 
+# =========================
+# UPSERT PREP
+# =========================
 records = df.to_dict(orient="records")
 
-table = "player_game_logs"
-
-stmt = insert(table).values(records)
+stmt = insert("player_game_logs").values(records)
 
 update_cols = {
     col.name: col
@@ -52,4 +89,4 @@ stmt = stmt.on_conflict_do_update(
 with engine.begin() as conn:
     conn.execute(stmt)
 
-print("Game logs upsert complete (no duplicates)")
+print("Game logs updated successfully")
