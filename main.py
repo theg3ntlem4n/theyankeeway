@@ -1,6 +1,10 @@
 import subprocess
 
-scripts = ["scripts/update_batting.py", "scripts/update_pitching.py"]
+scripts = [
+    "scripts/update_batting.py", 
+    "scripts/update_season_stats.py",
+    "scripts/update_pitching.py"
+]
 
 for script in scripts:
     print(f"Running {script}")
