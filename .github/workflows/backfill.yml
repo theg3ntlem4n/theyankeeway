@@ -1,0 +1,24 @@
+name: MLB Backfill (ONE TIME)
+
+on:
+  workflow_dispatch:   # manual trigger only
+
+jobs:
+  run-backfill:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run backfill
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python scripts/update_batting.py
