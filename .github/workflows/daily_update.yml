@@ -1,30 +1,26 @@
-name: Daily Fangraphs Update
+name: MLB Update
 
 on:
   schedule:
-    - cron: '0 6 * * *'
-
+    - cron: "0 3 * * *"
   workflow_dispatch:
 
 jobs:
-  update:
+  run:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Repo
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: "3.11"
 
       - name: Install dependencies
-        run: |
-          pip install -r requirements.txt
+        run: pip install -r requirements.txt
 
-      - name: Run pipeline
+      - name: Run daily update
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        run: |
-          python main.py
+        run: python scripts/daily_update.py
