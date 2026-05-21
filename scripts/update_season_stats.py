@@ -1,14 +1,21 @@
 import pandas as pd
+from pybaseball import batting_stats
 from sqlalchemy import create_engine
-from sqlalchemy.dialects.postgresql import insert
 from dotenv import load_dotenv
 import os
 from datetime import datetime
 
+# =========================
+# LOAD ENV
+# =========================
 load_dotenv()
-engine = create_engine(os.getenv("DATABASE_URL"))
 
-BASE_URL = "https://www.fangraphs.com/leaders.aspx"
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+if not DATABASE_URL:
+    raise ValueError("DATABASE_URL missing")
+
+engine = create_engine(DATABASE_URL)
 
 # =========================
 # CONFIG
@@ -18,61 +25,65 @@ END_YEAR = 2026
 
 all_frames = []
 
+# =========================
+# PULL DATA
+# =========================
 for season in range(START_YEAR, END_YEAR + 1):
-    print(f"Pulling season {season}")
 
-    url = (
-        f"{BASE_URL}?pos=all&stats=bat&lg=all&qual=0"
-        f"&type=8&season={season}&season1={season}"
-        f"&ind=0&team=0&pageitems=2000&csv=1"
-    )
+    print(f"Pulling season stats for {season}")
 
-    df = pd.read_csv(url)
-    df["season"] = season
+    try:
 
-    all_frames.append(df)
+        df = batting_stats(season, qual=0)
 
-df = pd.concat(all_frames, ignore_index=True)
+        if df.empty:
+            continue
+
+        # normalize columns
+        df.columns = (
+            df.columns
+            .str.lower()
+            .str.replace("%", "pct")
+            .str.replace("+", "_plus")
+            .str.replace("-", "_")
+            .str.replace(" ", "_")
+        )
+
+        # standardize
+        df = df.rename(columns={
+            "idfg": "playerid",
+            "name": "name",
+            "team": "team"
+        })
+
+        df = df.assign(
+            season=season,
+            pull_date=datetime.utcnow()
+        )
+
+        all_frames.append(df)
+
+    except Exception as e:
+        print(f"FAILED {season}: {e}")
 
 # =========================
-# CLEAN + NORMALIZE
+# CONCAT
 # =========================
-df.columns = (
-    df.columns
-    .str.lower()
-    .str.replace("%", "pct")
-    .str.replace(" ", "_")
+if len(all_frames) == 0:
+    raise ValueError("No season data pulled")
+
+final_df = pd.concat(all_frames, ignore_index=True)
+
+# =========================
+# SAVE
+# =========================
+final_df.to_sql(
+    "player_season_stats",
+    engine,
+    if_exists="replace",
+    index=False,
+    chunksize=1000,
+    method="multi"
 )
 
-df = df.assign(pull_date=datetime.utcnow())
-
-# =========================
-# REQUIRED COLUMN SAFETY
-# =========================
-required = ["playerid", "name", "team", "season"]
-for col in required:
-    if col not in df.columns:
-        raise ValueError(f"Missing required column: {col}")
-
-# =========================
-# UPSERT
-# =========================
-records = df.to_dict(orient="records")
-
-stmt = insert("player_season_stats").values(records)
-
-update_cols = {
-    col.name: col
-    for col in stmt.excluded
-    if col.name not in ["playerid", "season"]
-}
-
-stmt = stmt.on_conflict_do_update(
-    index_elements=["playerid", "season"],
-    set_=update_cols
-)
-
-with engine.begin() as conn:
-    conn.execute(stmt)
-
-print("Season stats updated successfully")
+print("Season stats upload complete")
