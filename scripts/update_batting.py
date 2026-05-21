@@ -1,6 +1,5 @@
 import pandas as pd
-from pybaseball import statcast_batter
-from pybaseball import batting_stats
+from pybaseball import batting_stats_bref
 from sqlalchemy import create_engine
 from dotenv import load_dotenv
 import os
@@ -18,53 +17,86 @@ if not DATABASE_URL:
 
 engine = create_engine(DATABASE_URL)
 
-START_YEAR = 2024
+# =========================
+# CONFIG
+# =========================
+START_YEAR = 2000
 END_YEAR = 2026
 
 all_frames = []
 
 # =========================
-# GET PLAYER IDS
+# PULL DATA
 # =========================
-players = batting_stats(2026, qual=0)[["IDfg", "Name"]]
+for season in range(START_YEAR, END_YEAR + 1):
 
-players.columns = ["playerid", "name"]
-
-# =========================
-# LOOP PLAYERS
-# =========================
-for _, row in players.iterrows():
-
-    playerid = row["playerid"]
-    name = row["name"]
-
-    print(f"Pulling game logs for {name}")
+    print(f"Pulling season stats for {season}")
 
     try:
 
-        # statcast only supports MLBAM ids reliably
-        # so this is placeholder workflow
-        # later you should build ID crosswalk table
+        df = batting_stats_bref(season)
 
-        continue
+        if df.empty:
+            print(f"No data for {season}")
+            continue
+
+        # normalize columns
+        df.columns = (
+            df.columns
+            .str.lower()
+            .str.replace("%", "pct")
+            .str.replace("+", "_plus")
+            .str.replace("-", "_")
+            .str.replace(" ", "_")
+        )
+
+        # add season + timestamp safely
+        df = df.assign(
+            season=season,
+            pull_date=datetime.utcnow()
+        )
+
+        all_frames.append(df)
 
     except Exception as e:
-        print(f"FAILED {name}: {e}")
+        print(f"FAILED {season}: {e}")
 
 # =========================
-# SAVE
+# VALIDATE
 # =========================
-if len(all_frames) > 0:
+if len(all_frames) == 0:
+    raise ValueError("No data pulled")
 
-    final_df = pd.concat(all_frames, ignore_index=True)
+# =========================
+# CONCAT
+# =========================
+final_df = pd.concat(all_frames, ignore_index=True)
 
-    final_df.to_sql(
-        "player_game_logs",
-        engine,
-        if_exists="replace",
-        index=False,
-        chunksize=1000,
-        method="multi"
+# =========================
+# OPTIONAL COLUMN CLEANUP
+# =========================
+if "name" not in final_df.columns:
+    raise ValueError("Name column missing")
+
+# create stable player id if needed
+if "playerid" not in final_df.columns:
+
+    final_df["playerid"] = (
+        final_df["name"]
+        .str.lower()
+        .str.replace(" ", "_")
     )
 
-print("Game logs upload complete")
+# =========================
+# SAVE TO SUPABASE
+# =========================
+final_df.to_sql(
+    "player_season_stats",
+    engine,
+    if_exists="replace",
+    index=False,
+    chunksize=1000,
+    method="multi"
+)
+
+print("Season stats upload complete")
