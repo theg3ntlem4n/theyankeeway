@@ -1,3 +1,12 @@
+import socket
+
+_original_getaddrinfo = socket.getaddrinfo
+
+def ipv4_only(*args, **kwargs):
+    return _original_getaddrinfo(*args, family=socket.AF_INET)
+
+socket.getaddrinfo = ipv4_only
+
 import pandas as pd
 from pybaseball import batting_stats
 from sqlalchemy import create_engine
@@ -15,8 +24,11 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
     raise ValueError("DATABASE_URL missing")
 
-engine = create_engine(DATABASE_URL)
-
+engine = create_engine(
+    DATABASE_URL,
+    pool_pre_ping=True,
+    pool_recycle=300
+)
 # =========================
 # CONFIG
 # =========================
