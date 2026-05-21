@@ -33,7 +33,7 @@ engine = create_engine(
 # =========================
 # CONFIG
 # =========================
-START_YEAR = 2000
+START_YEAR = 2008
 END_YEAR = 2026
 
 all_frames = []
