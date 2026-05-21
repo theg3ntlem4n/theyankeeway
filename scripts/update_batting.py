@@ -1,5 +1,5 @@
 import pandas as pd
-from pybaseball import batting_stats
+from pybaseball import batting_stats_bref
 from sqlalchemy import create_engine
 from dotenv import load_dotenv
 import os
@@ -20,21 +20,19 @@ END_YEAR = 2026
 
 all_frames = []
 
-for year in range(START_YEAR, END_YEAR + 1):
+for year in range(2008, 2026):
+
     print(f"Pulling {year}")
 
     try:
-        df = batting_stats(year, qual=0)
+        df = batting_stats_bref(year)
 
         if df is None or df.empty:
             continue
 
         df.columns = df.columns.str.lower()
 
-        df = df.assign(
-            season=year,
-            pull_date=datetime.utcnow()
-        )
+        df["season"] = year
 
         all_frames.append(df)
 
