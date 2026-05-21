@@ -3,7 +3,8 @@ import socket
 _original_getaddrinfo = socket.getaddrinfo
 
 def ipv4_only(*args, **kwargs):
-    return _original_getaddrinfo(*args, family=socket.AF_INET)
+    kwargs["family"] = socket.AF_INET
+    return _original_getaddrinfo(*args, **kwargs)
 
 socket.getaddrinfo = ipv4_only
 
