@@ -1,9 +1,7 @@
 pandas
-numpy
-requests
-beautifulsoup4
 sqlalchemy
 psycopg2-binary
 python-dotenv
 pybaseball
 lxml
+html5lib
