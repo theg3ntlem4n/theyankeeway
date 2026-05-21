@@ -1,92 +1,70 @@
 import pandas as pd
+from pybaseball import statcast_batter
+from pybaseball import batting_stats
 from sqlalchemy import create_engine
-from sqlalchemy.dialects.postgresql import insert
 from dotenv import load_dotenv
 import os
 from datetime import datetime
 
+# =========================
+# LOAD ENV
+# =========================
 load_dotenv()
-engine = create_engine(os.getenv("DATABASE_URL"))
 
-BASE_URL = "https://www.fangraphs.com/statsd.aspx"
+DATABASE_URL = os.getenv("DATABASE_URL")
 
-CURRENT_SEASON = 2026
+if not DATABASE_URL:
+    raise ValueError("DATABASE_URL missing")
 
-print(f"Pulling game logs {CURRENT_SEASON}")
+engine = create_engine(DATABASE_URL)
 
-url = (
-    f"{BASE_URL}?playerid=&position=all&season={CURRENT_SEASON}"
-    "&stat=bat&split=game&team=0&league=0&csv=1"
-)
+START_YEAR = 2024
+END_YEAR = 2026
 
-df = pd.read_csv(url)
+all_frames = []
 
 # =========================
-# CLEAN COLUMN NAMES
+# GET PLAYER IDS
 # =========================
-df.columns = (
-    df.columns
-    .str.lower()
-    .str.replace("%", "pct")
-    .str.replace(" ", "_")
-)
+players = batting_stats(2026, qual=0)[["IDfg", "Name"]]
+
+players.columns = ["playerid", "name"]
 
 # =========================
-# FIX FAN GRAPHS INCONSISTENCIES
+# LOOP PLAYERS
 # =========================
-rename_map = {}
+for _, row in players.iterrows():
 
-if "date" in df.columns:
-    rename_map["date"] = "game_date"
+    playerid = row["playerid"]
+    name = row["name"]
 
-if "gamedate" in df.columns:
-    rename_map["gamedate"] = "game_date"
+    print(f"Pulling game logs for {name}")
 
-if "player_id" in df.columns:
-    rename_map["player_id"] = "playerid"
+    try:
 
-df = df.rename(columns=rename_map)
+        # statcast only supports MLBAM ids reliably
+        # so this is placeholder workflow
+        # later you should build ID crosswalk table
+
+        continue
+
+    except Exception as e:
+        print(f"FAILED {name}: {e}")
 
 # =========================
-# VALIDATION (prevents crash)
+# SAVE
 # =========================
-required_cols = ["playerid", "game_date"]
+if len(all_frames) > 0:
 
-missing = [c for c in required_cols if c not in df.columns]
-if missing:
-    raise ValueError(
-        f"Missing columns {missing}. Available: {df.columns.tolist()}"
+    final_df = pd.concat(all_frames, ignore_index=True)
+
+    final_df.to_sql(
+        "player_game_logs",
+        engine,
+        if_exists="replace",
+        index=False,
+        chunksize=1000,
+        method="multi"
     )
 
-# =========================
-# SAFE ADDITIONS (NO FRAGMENTATION)
-# =========================
-df = df.assign(
-    season=CURRENT_SEASON,
-    pull_date=datetime.utcnow()
-)
-
-df = df.dropna(subset=["playerid", "game_date"])
-
-# =========================
-# UPSERT PREP
-# =========================
-records = df.to_dict(orient="records")
-
-stmt = insert("player_game_logs").values(records)
-
-update_cols = {
-    col.name: col
-    for col in stmt.excluded
-    if col.name not in ["playerid", "game_date"]
-}
-
-stmt = stmt.on_conflict_do_update(
-    index_elements=["playerid", "game_date"],
-    set_=update_cols
-)
-
-with engine.begin() as conn:
-    conn.execute(stmt)
-
-print("Game logs updated successfully")
+print("Game logs upload complete")
