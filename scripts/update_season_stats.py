@@ -1,13 +1,3 @@
-import socket
-
-_original_getaddrinfo = socket.getaddrinfo
-
-def ipv4_only(*args, **kwargs):
-    kwargs["family"] = socket.AF_INET
-    return _original_getaddrinfo(*args, **kwargs)
-
-socket.getaddrinfo = ipv4_only
-
 import pandas as pd
 from pybaseball import batting_stats
 from sqlalchemy import create_engine
